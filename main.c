@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include "log/log.h"
 #include "synergy/event.h"
@@ -25,6 +26,7 @@ const char *HELP = "Usage: synergy-uinput [options]\n\n\
     -h --help                       Display this usage information.\n\
     -V --version                    Display program version.\n\
     -v --verbose                    Increase verbosity level.\n\
+    -a --abs                        Use absolute pointer movement.\n\
     -d --debug LEVEL[=info]         Set verbosity level to LEVEL [error, warning, info, notice, debug].\n\
     -l --log FILE[=stderr]          Set log file\n\
     -c --host HOST[=localhost]      Address of synergy server.\n\
@@ -39,6 +41,7 @@ const struct option LONG_OPTIONS[] =
     {"help",    no_argument,        0, 'h'}, // display help and usage information
     {"version", no_argument,        0, 'V'}, // display version
     {"verbose", no_argument,        0, 'v'}, // set log level to notice [error, warning, info, notice, debug]
+    {"abs",     no_argument,        0, 'a'},
     {"debug",   required_argument,  0, 'd'}, // manually set log level
     {"log",     required_argument,  0, 'l'}, // set log file
     {"host",    required_argument,  0, 'c'}, // connection host
@@ -58,11 +61,12 @@ SynergyClient client = {
     {LOG_INFO, 0},
 };
 
-uint32_t loglevel;
+uint32_t loglevel = 4;
 char *logfile;
 
 int32_t mouse,
         keyboard;
+int32_t abs_mouse = 0;
 
 void sigbreak(int signal)
 {
@@ -89,6 +93,9 @@ int32_t main(int32_t argc, char **argv)
             return 0;
 
         case 'v': loglevel = LOG_NOTICE;
+            break;
+
+        case 'a': abs_mouse = 1;
             break;
 
         case 'd':
@@ -148,16 +155,39 @@ void eventOptionsReset(SynergyClient *client){}
 void eventOptionsSet(SynergyClient *client, const uint32_t *options){}
 void eventFocusOut(SynergyClient *client){}
 
+static int old_x = 0;
+static int old_y = 0;
+
 void eventFocusIn(SynergyClient *client, const uint16_t x, const uint16_t y, const uint16_t mask, const uint16_t seq)
 {
-    uMouseMotion(mouse, x, y);
+    if (abs_mouse)
+        uMouseMotion(mouse, x, y);
+    else
+    {
+        uMouseRelativeMotion(mouse, -9999, -9999);
+        usleep(16 * 1000);
+        uMouseRelativeMotion(mouse, x, y);
+        usleep(16 * 1000);
+        old_x = x;
+        old_y = y;
+    }
     return;
 }
 
 
 void eventMouseMotion(SynergyClient *client, const uint16_t x, const uint16_t y)
 {
-    uMouseMotion(mouse, x, y);
+    if (abs_mouse)
+        uMouseMotion(mouse, x, y);
+    else
+    {
+        int out_x = x - old_x;
+        int out_y = y - old_y;
+        old_x = x;
+        old_y = y;
+
+        uMouseRelativeMotion(mouse, out_x, out_y);
+    }
     return;
 }
 
@@ -187,18 +217,19 @@ void eventMouseButtonUp(SynergyClient *client, const uint16_t button)
 
 void eventKeyDown(SynergyClient *client, const uint16_t key, const uint16_t mask, const uint16_t button)
 {
-    uKey(keyboard, button - 8, 1);
+    uKey(keyboard, key, 1);
     return;
 }
 
 void eventKeyUp(SynergyClient *client, const uint16_t key, const uint16_t mask, const uint16_t button)
 {
-    uKey(keyboard, button - 8, 0);
+    uKey(keyboard, key, 0);
     return;
 }
 
 void eventKeyRepeat(SynergyClient *client, const uint16_t key, const uint16_t mask, const uint16_t count, const uint16_t button)
 {
-    uKey(keyboard, button - 8, 2);
+    uKey(keyboard, key, 2);
     return;
 }
+

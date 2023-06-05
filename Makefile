@@ -1,4 +1,4 @@
-CFLAGS=-Os --std=c99
+CFLAGS=-Os --std=gnu99
 all: synergy-uinput
 
 synergy/protocol.o: synergy/protocol.h synergy/protocol1.4.c
